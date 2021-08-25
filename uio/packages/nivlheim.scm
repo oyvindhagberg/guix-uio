@@ -129,54 +129,66 @@ Go programming language.")
 
 (define-public nivlheim
   (package
-    (name "nivlheim")
-    (version "2.7.3")
-    (home-page "https://github.com/unioslo/nivlheim")
-    (source (origin
-              (method git-fetch)
-              (uri (git-reference (url home-page) (commit version)))
-              (file-name (git-file-name name version))
-              (sha256
-               (base32
-                "1fw7v1xa6qik4nisshm837rkp05yzsisr5cwy7kv8495bzc3zykr"))))
-    (build-system go-build-system)
-    (arguments
-     '(#:install-source? #f
-       #:unpack-path "github.com/unioslo/nivlheim"
-       #:import-path "github.com/unioslo/nivlheim/server/service"
-       #:phases
-       (modify-phases %standard-phases
-         (add-after 'unpack 'patch-test
-           (lambda _
-             (substitute*
-                 "src/github.com/unioslo/nivlheim/server/service/testingUtilities.go"
-               ;; Connect to Postgres using TCP instead of a Unix socket.
-               (("host=/var/run/postgresql")
-                "host=127.0.0.1 port=5432"))
-             #t))
-         (add-before 'check 'prepare-tests
-           (lambda _
-             (mkdir-p "/tmp/db")
-             (invoke "initdb" "-D" "/tmp/db")
-             (invoke "pg_ctl" "-D" "/tmp/db" "-l" "/tmp/db.log" "start")
-             (invoke "psql" "-d" "postgres" "-c"
-                     "CREATE DATABASE nixbld;")
+   (name "nivlheim")
+   (version "2.7.3")
+   (home-page "https://github.com/unioslo/nivlheim")
+   (source (origin
+            (method git-fetch)
+            (uri (git-reference (url home-page) (commit version)))
+            (file-name (git-file-name name version))
+            (sha256
+             (base32
+              "1fw7v1xa6qik4nisshm837rkp05yzsisr5cwy7kv8495bzc3zykr"))))
+   (build-system go-build-system)
+   (arguments
+    '(#:install-source? #f
+      #:unpack-path "github.com/unioslo/nivlheim"
+      #:import-path "github.com/unioslo/nivlheim/server/service"
+      #:phases
+      (modify-phases %standard-phases
+		     (add-after 'unpack 'patch-test
+				(lambda _
+				  (substitute*
+				   "src/github.com/unioslo/nivlheim/server/service/testingUtilities.go"
+				   ;; Connect to Postgres using TCP instead of a Unix socket.
+				   (("host=/var/run/postgresql")
+				    "host=127.0.0.1 port=5432"))))
+		     (add-before 'check 'prepare-tests
+				 (lambda _
+				   (mkdir-p "/tmp/db")
+				   (invoke "initdb" "-D" "/tmp/db")
+				   (invoke "pg_ctl" "-D" "/tmp/db" "-l" "/tmp/db.log" "start")
+				   (invoke "psql" "-d" "postgres" "-c"
+					   "CREATE DATABASE nixbld;")
 
-             ;; Disable tests that require network access.
-             (setenv "NONETWORK" "indeed")
-             #t)))))
-    (native-inputs
-     `(("postgresql" ,postgresql)))
-    (inputs
-     `(("github.com/Azure/go-ntlmssp" ,go-github-com-azure-go-ntlmssp)
-       ("github.com/lib/pq" ,go-github-com-lib-pq)
-       ("github.com/go-asn1-ber/asn1-ber" ,go-github-com-go-asn1-ber-asn1-ber)
-       ("golang.org/x/net" ,go-golang-org-x-net)
-       ("golang/org/x/oauth2" ,go-golang-org-x-oauth2)
-       ("gopkg.in/ldap.v3" ,go-gopkg.in-ldap.v3)))
-    (synopsis "Collect information from servers")
-    (description
-     "Nivlheim is a system for collecting key information from remote
+				   ;; Disable tests that require network access.
+				   (setenv "NONETWORK" "indeed")))
+		     (add-after 'install 'rename-executable
+				(lambda* (#:key outputs #:allow-other-keys)
+				  (let ((out (assoc-ref outputs "out")))
+				    (with-directory-excursion (string-append out "/bin")
+							      (rename-file "service" "nivlheim")))))
+		     (add-after 'unpack 'install-installdb
+				;; Install this early before go-build-system changes directory.
+				(lambda* (#:key outputs #:allow-other-keys)
+				  (let* ((out (assoc-ref outputs "out"))
+					 (share (string-append out "/share/nivlheim")))
+				    (mkdir-p (dirname share))
+				    (copy-recursively "src/github.com/unioslo/nivlheim/server" share))))
+
+		     )))
+   (native-inputs
+    `(("postgresql" ,postgresql)))
+   (inputs
+    `(("github.com/Azure/go-ntlmssp" ,go-github-com-azure-go-ntlmssp)
+      ("github.com/lib/pq" ,go-github-com-lib-pq)
+      ("github.com/go-asn1-ber/asn1-ber" ,go-github-com-go-asn1-ber-asn1-ber)
+      ("golang.org/x/net" ,go-golang-org-x-net)
+      ("golang/org/x/oauth2" ,go-golang-org-x-oauth2)
+      ("gopkg.in/ldap.v3" ,go-gopkg.in-ldap.v3)))
+   (synopsis "Collect information from servers")
+   (description
+    "Nivlheim is a system for collecting key information from remote
 machines and presenting it through an easy-to-use web GUI with search and
 browse functions.")
-    (license gpl3+)))
+   (license gpl3+)))
